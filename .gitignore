@@ -1,0 +1,7 @@
+__pycache__/
+build/
+# ignore files produced after the match
+*.log
+*.dat
+match_events*.csv
+score_board*.csv
