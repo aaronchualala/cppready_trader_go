@@ -20,22 +20,27 @@ AutoTrader::AutoTrader(boost::asio::io_context& context) : BaseAutoTrader(contex
 {
 }
 
+// logs
 void AutoTrader::DisconnectHandler()
 {
     BaseAutoTrader::DisconnectHandler();
     RLOG(LG_AT, LogLevel::LL_INFO) << "execution connection lost";
 }
 
+// calls OrderStatusMessageHandler(clientOrderId, 0, 0, 0)
 void AutoTrader::ErrorMessageHandler(unsigned long clientOrderId,
                                      const std::string& errorMessage)
 {
     RLOG(LG_AT, LogLevel::LL_INFO) << "error with order " << clientOrderId << ": " << errorMessage;
+    // std::set only allows unique elements, so the count can only be either 0 (the element is not in the set) or 1 (the element is in the set)
     if (clientOrderId != 0 && ((mAsks.count(clientOrderId) == 1) || (mBids.count(clientOrderId) == 1)))
     {
+        // treats the errored order as if it were never executed, updating the internal state of the AutoTrader accordingly
         OrderStatusMessageHandler(clientOrderId, 0, 0, 0);
     }
 }
 
+// logs
 void AutoTrader::HedgeFilledMessageHandler(unsigned long clientOrderId,
                                            unsigned long price,
                                            unsigned long volume)
@@ -44,6 +49,7 @@ void AutoTrader::HedgeFilledMessageHandler(unsigned long clientOrderId,
                                    << " lots at $" << price << " average price in cents";
 }
 
+// main
 void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                          unsigned long sequenceNumber,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& askPrices,
@@ -91,6 +97,7 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
     }
 }
 
+// logs and hedges
 void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
                                            unsigned long price,
                                            unsigned long volume)
@@ -109,6 +116,7 @@ void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
     }
 }
 
+// updates internal state (when fulfilled or cancelled)
 void AutoTrader::OrderStatusMessageHandler(unsigned long clientOrderId,
                                            unsigned long fillVolume,
                                            unsigned long remainingVolume,
@@ -130,6 +138,7 @@ void AutoTrader::OrderStatusMessageHandler(unsigned long clientOrderId,
     }
 }
 
+// logs
 void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           unsigned long sequenceNumber,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& askPrices,
