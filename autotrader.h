@@ -1,3 +1,16 @@
+// BaseAutoTrader public methods
+    // virtual void SendAmendOrder(unsigned long clientOrderId, unsigned long volume);
+    // virtual void SendCancelOrder(unsigned long clientOrderId);
+    // virtual void SendHedgeOrder(unsigned long clientOrderId,
+    //                             Side side,
+    //                             unsigned long price,
+    //                             unsigned long volume);
+    // virtual void SendInsertOrder(unsigned long clientOrderId,
+    //                              Side side,
+    //                              unsigned long price,
+    //                              unsigned long volume,
+    //                              Lifespan lifespan);#include <array>
+
 #ifndef CPPREADY_TRADER_GO_AUTOTRADER_H
 #define CPPREADY_TRADER_GO_AUTOTRADER_H
 
@@ -85,6 +98,14 @@ private:
     signed long mPosition = 0;
     std::unordered_set<unsigned long> mAsks;
     std::unordered_set<unsigned long> mBids;
+    
+    unsigned long mAskIdHedge = 0;
+    unsigned long mBidIdHedge = 0;
+    signed long mPositionHedge = 0;
+    std::unordered_set<unsigned long> mAsksHedge;
+    std::unordered_set<unsigned long> mBidsHedge;
+    unsigned long latestFutureAskPrice;
+    unsigned long latestFutureBidPrice;
 };
 
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H
