@@ -65,8 +65,8 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
     if (instrument == Instrument::ETF)
     {
 
-        unsigned long newAskPrice = (askPrices[0] != 0) ? askPrices[0] - TICK_SIZE_IN_CENTS : 0;
-        unsigned long newBidPrice = (bidPrices[0] != 0) ? bidPrices[0] + TICK_SIZE_IN_CENTS : 0;
+        unsigned long newAskPrice = (askPrices[0] != 0 && askPrices[0] != mAskPrice && askVolumes[0] != LOT_SIZE) ? askPrices[0] - TICK_SIZE_IN_CENTS : 0;
+        unsigned long newBidPrice = (bidPrices[0] != 0 && bidPrices[0] != mBidPrice && bidVolumes[0] != LOT_SIZE) ? bidPrices[0] + TICK_SIZE_IN_CENTS : 0;
 
         // cancel existing orders if the price has changed
         if (mAskId != 0 && newAskPrice != 0 && newAskPrice != mAskPrice)
