@@ -90,22 +90,20 @@ public:
                                   const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) override;
 
 private:
-    unsigned long mNextMessageId = 1;
-    unsigned long mAskId = 0;
-    unsigned long mAskPrice = 0;
-    unsigned long mBidId = 0;
-    unsigned long mBidPrice = 0;
-    signed long mPosition = 0;
+    signed long nextMessageId = 1;
+    signed long id = 1;
+    signed long myPrice = 1;
+    signed long myVolume = 5;
+
+    signed long myEtfHoldings = 0;
+    signed long myEtfAskPosition = 0;
+    signed long myEtfBidPosition = 0;
     std::unordered_set<unsigned long> mAsks;
     std::unordered_set<unsigned long> mBids;
-    
-    unsigned long mAskIdHedge = 0;
-    unsigned long mBidIdHedge = 0;
-    signed long mPositionHedge = 0;
-    std::unordered_set<unsigned long> mAsksHedge;
-    std::unordered_set<unsigned long> mBidsHedge;
-    unsigned long latestFutureAskPrice;
-    unsigned long latestFutureBidPrice;
+
+    signed long prevLowestAsk = 0;
+    signed long prevHighestBid = 0;
+    signed long myFutureHoldings = 0;
 };
 
 #endif //CPPREADY_TRADER_GO_AUTOTRADER_H

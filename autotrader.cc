@@ -1,7 +1,11 @@
-// cmake -DCMAKE_BUILD_TYPE=Debug -B build
-// cmake --build build --config Debug
-// cp build/autotrader .
-// python3 rtg.py run autotrader 
+ /* 
+rm build/autotrader
+rm autotrader
+cmake -DCMAKE_BUILD_TYPE=Debug -B build
+cmake --build build --config Debug
+cp build/autotrader .
+python3 rtg.py run autotrader 
+*/
 #include <array>
 #include <boost/asio/io_context.hpp>
 #include <ready_trader_go/logging.h>
@@ -10,7 +14,6 @@ using namespace ReadyTraderGo;
 
 RTG_INLINE_GLOBAL_LOGGER_WITH_CHANNEL(LG_AT, "AUTO")
 
-constexpr int LOT_SIZE = 10;
 constexpr int POSITION_LIMIT = 100;
 constexpr int UNHEDGED_POSITION_LIMIT = 10;
 constexpr int TICK_SIZE_IN_CENTS = 100;
@@ -28,7 +31,7 @@ void AutoTrader::DisconnectHandler()
     RLOG(LG_AT, LogLevel::LL_INFO) << "execution connection lost";
 }
 
-// calls OrderStatusMessageHandler(clientOrderId, 0, 0, 0);
+// OrderStatusMessageHandler(clientOrderId, 0, 0, 0);
 void AutoTrader::ErrorMessageHandler(unsigned long clientOrderId,
                                      const std::string& errorMessage)
 {
@@ -36,16 +39,9 @@ void AutoTrader::ErrorMessageHandler(unsigned long clientOrderId,
     {
         OrderStatusMessageHandler(clientOrderId, 0, 0, 0);
     }
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "ErrorMessageHandler";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
 }
 
-// cancel, insert, updates mPosition
+// TO UPDATE - inserts
 void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                          unsigned long sequenceNumber,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& askPrices,
@@ -54,62 +50,54 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
     RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "OrderBookMessageHandler";       
+    RLOG(LG_AT, LogLevel::LL_INFO) << "OrderBookMessageHandler";   
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————"; 
-    if (instrument == Instrument::FUTURE)
-    {
-        latestFutureAskPrice = askPrices[0];
-        latestFutureBidPrice = bidPrices[0];
+    if (instrument == Instrument::ETF){
+        prevLowestAsk = askPrices[0];
+        prevHighestBid = bidPrices[0];
     }
-
-    if (instrument == Instrument::ETF)
-    {
-
-        unsigned long newAskPrice = (askPrices[0] != 0 && askPrices[0] != mAskPrice && askVolumes[0] != LOT_SIZE) ? askPrices[0] - TICK_SIZE_IN_CENTS : 0;
-        unsigned long newBidPrice = (bidPrices[0] != 0 && bidPrices[0] != mBidPrice && bidVolumes[0] != LOT_SIZE) ? bidPrices[0] + TICK_SIZE_IN_CENTS : 0;
-
-        // cancel existing orders if the price has changed
-        if (mAskId != 0 && newAskPrice != 0 && newAskPrice != mAskPrice)
-        {
-            SendCancelOrder(mAskId);
-            mAskId = 0;
-        }
-        if (mBidId != 0 && newBidPrice != 0 && newBidPrice != mBidPrice)
-        {
-            SendCancelOrder(mBidId);
-            mBidId = 0;
-        }
     
-
-        // insert new orders if the price has changed
-        bool askOpp = latestFutureAskPrice < askPrices[0];
-        bool bidOpp = latestFutureBidPrice > bidPrices[0];
-
-        if (askOpp && mAskId == 0 && newAskPrice != 0 && mPosition - 10 > -POSITION_LIMIT && abs(mPosition - mPositionHedge) <= UNHEDGED_POSITION_LIMIT)
-        {
-            mAskId = mNextMessageId++;
-            mAskPrice = newAskPrice;
-            SendInsertOrder(mAskId, Side::SELL, newAskPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-            mAsks.emplace(mAskId);
-            mPosition -= LOT_SIZE;
+    
+    if (instrument == Instrument::FUTURE){
+        if (askPrices[0] < prevLowestAsk){
+            RLOG(LG_AT, LogLevel::LL_INFO) << "FRIDGE: " << (myEtfHoldings - (myEtfAskPosition+myVolume) + myEtfBidPosition); 
+            if(mAsks.size() == 0 && myEtfHoldings - (myEtfAskPosition+myVolume) > -POSITION_LIMIT){
+                id = nextMessageId++;
+                myPrice = prevLowestAsk - TICK_SIZE_IN_CENTS;
+                SendInsertOrder(id, Side::SELL, myPrice, myVolume, Lifespan::GOOD_FOR_DAY);
+                mAsks.emplace(id);
+                myEtfAskPosition += myVolume;
+            }
+        } else {
+            if (mAsks.size() != 0){
+                id = *mAsks.begin();
+                SendCancelOrder(id);
+            }
         }
 
-        if (bidOpp && mBidId == 0 && newBidPrice != 0 && mPosition + 10 < POSITION_LIMIT && abs(mPosition - mPositionHedge) <= UNHEDGED_POSITION_LIMIT)
-        {
-            mBidId = mNextMessageId++;
-            mBidPrice = newBidPrice;
-            SendInsertOrder(mBidId, Side::BUY, newBidPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
-            mBids.emplace(mBidId);
-            mPosition += LOT_SIZE;
+        if (bidPrices[0] > prevHighestBid){
+            if(mBids.size() == 0 && myEtfHoldings + (myEtfBidPosition+myVolume) < POSITION_LIMIT){
+                id = nextMessageId++;
+                myPrice = prevHighestBid + TICK_SIZE_IN_CENTS;
+                SendInsertOrder(id, Side::BUY, myPrice, myVolume, Lifespan::GOOD_FOR_DAY);
+                mBids.emplace(id);
+                myEtfBidPosition += myVolume;
+            }
+        } else {
+            if (mBids.size() != 0){
+                id = *mBids.begin();
+                SendCancelOrder(id);
+            }
         }
     }
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";   
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
+    RLOG(LG_AT, LogLevel::LL_INFO) << "myEtfHoldings: " << myEtfHoldings << "| myEtfAskPosition: " << myEtfAskPosition << "| myEtfBidPosition: " << myEtfBidPosition ;
+    RLOG(LG_AT, LogLevel::LL_INFO) << "mAsks: " << mAsks.size() << "| mBids: " << mBids.size() << "| prevLowestAsk: " << prevLowestAsk << "| prevHighestBid: " << prevHighestBid << "| myFutureHoldings: " << myFutureHoldings ;
+
+
 }
 
-// sends hedge
+// TO UPDATE - fills
 void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
                                            unsigned long price,
                                            unsigned long volume)
@@ -119,50 +107,32 @@ void AutoTrader::OrderFilledMessageHandler(unsigned long clientOrderId,
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
     if (mAsks.count(clientOrderId) == 1)
     {
-        mBidIdHedge = mNextMessageId++;
-        SendHedgeOrder(mBidIdHedge, Side::BUY, MAX_ASK_NEAREST_TICK, volume);
-        mBidsHedge.emplace(mBidIdHedge);
-    }    
+        myEtfHoldings -= volume;
+        myEtfAskPosition -= volume;
+        SendHedgeOrder(nextMessageId++, Side::BUY, MAX_ASK_NEAREST_TICK, volume);
+        myFutureHoldings += volume;
+    }
     else if (mBids.count(clientOrderId) == 1)
     {
-        mAskIdHedge = mNextMessageId++;
-        SendHedgeOrder(mAskIdHedge, Side::SELL, MIN_BID_NEARST_TICK, volume);
-        mAsksHedge.emplace(mAskIdHedge);
+        myEtfHoldings += volume;
+        myEtfBidPosition -= volume;
+        SendHedgeOrder(nextMessageId++, Side::SELL, MIN_BID_NEARST_TICK, volume);
+        myFutureHoldings -= volume;
     }
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
+    RLOG(LG_AT, LogLevel::LL_INFO) << "myEtfHoldings: " << myEtfHoldings << "| myEtfAskPosition: " << myEtfAskPosition << "| myEtfBidPosition: " << myEtfBidPosition ;
+    RLOG(LG_AT, LogLevel::LL_INFO) << "mAsks: " << mAsks.size() << "| mBids: " << mBids.size() << "| prevLowestAsk: " << prevLowestAsk << "| prevHighestBid: " << prevHighestBid << "| myFutureHoldings: " << myFutureHoldings ;
 }
 
 
-// updates mPositionHedge
+// NIL
 void AutoTrader::HedgeFilledMessageHandler(unsigned long clientOrderId,
                                            unsigned long price,
                                            unsigned long volume)
 {
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "HedgeFilledMessageHandler";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-
-    if (mAsksHedge.count(clientOrderId) == 1)
-    {
-        mPositionHedge += volume;
-        mAsksHedge.erase(clientOrderId);
-    }    
-    else if (mBidsHedge.count(clientOrderId) == 1)
-    {
-        mPositionHedge -= volume;
-        mBidsHedge.erase(clientOrderId);
-    }
-
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
 }
 
-// updates mPosition
+// TO UPDATE - cancels
 void AutoTrader::OrderStatusMessageHandler(unsigned long clientOrderId,
                                            unsigned long fillVolume,
                                            unsigned long remainingVolume,
@@ -171,33 +141,28 @@ void AutoTrader::OrderStatusMessageHandler(unsigned long clientOrderId,
     RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
     RLOG(LG_AT, LogLevel::LL_INFO) << "OrderStatusMessageHandler";
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    if (remainingVolume == 0)
+    if (mAsks.count(clientOrderId) == 1)
     {
-        if (mAsks.count(clientOrderId) == 1)
+        if (remainingVolume == 0)
         {
-            if(mAskId == clientOrderId)
-            {
-                mAskId = 0;
-            }
             mAsks.erase(clientOrderId);
-            mPosition += LOT_SIZE - fillVolume;
+            myEtfAskPosition -= (myVolume - fillVolume);
         }
-        else if (mBids.count(clientOrderId) == 1)
+    }
+    else if (mBids.count(clientOrderId) == 1)
+    {
+        if (remainingVolume == 0)
         {
-           if(mBidId == clientOrderId)
-            {
-                mBidId = 0;
-            }
             mBids.erase(clientOrderId);
-            mPosition -= LOT_SIZE - fillVolume;
+            myEtfBidPosition -= (myVolume - fillVolume);
         }
     }
     RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
+    RLOG(LG_AT, LogLevel::LL_INFO) << "myEtfHoldings: " << myEtfHoldings << "| myEtfAskPosition: " << myEtfAskPosition << "| myEtfBidPosition: " << myEtfBidPosition ;
+    RLOG(LG_AT, LogLevel::LL_INFO) << "mAsks: " << mAsks.size() << "| mBids: " << mBids.size() << "| prevLowestAsk: " << prevLowestAsk << "| prevHighestBid: " << prevHighestBid << "| myFutureHoldings: " << myFutureHoldings ;
 }
 
+// NIL
 void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           unsigned long sequenceNumber,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& askPrices,
@@ -205,12 +170,4 @@ void AutoTrader::TradeTicksMessageHandler(Instrument instrument,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidPrices,
                                           const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
-    RLOG(LG_AT, LogLevel::LL_INFO) << "TradeTicksMessageHandler";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-
-    RLOG(LG_AT, LogLevel::LL_INFO) << "————————————————————————————————————————————————————————";
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mPosition: " << mPosition << "| mPositionHedge: " << mPositionHedge ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "mAskId: " << mAskId << "| mBidId: " << mBidId ;
-    RLOG(LG_AT, LogLevel::LL_INFO) << "\n\n";
-
 }
